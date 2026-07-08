@@ -2,45 +2,45 @@
 
 一个面向练手的 ECG 时间序列异常检测小项目。项目重点不是追求模型指标或医学可用性，而是通过一个轻量数据集完整走一遍机器学习工程流程：数据读取、预处理、模型训练、MLflow 实验追踪、模型制品管理，以及基础 AWS 部署/存储实践。
 
-## Resume-Style Summary
+## 简历式项目描述
 
 **ECG Anomaly Detection MLOps Practice | AWS + MLflow Mini Project**
 
-- Reproduced a lightweight ECG time-series classification pipeline on the ECG5000 dataset, using 140-point single-lead signals as a compact practice case for anomaly detection and multi-class classification.
-- Built a reproducible experiment workflow around data loading, normalization checks, train/test evaluation, metric logging, artifact tracking, and model version comparison with MLflow.
-- Practiced cloud-oriented ML lifecycle management by organizing dataset/model artifacts for S3-style storage and preparing the project for AWS-based experiment tracking and deployment workflows.
-- Treated model quality as secondary to engineering fluency, focusing on end-to-end MLOps familiarity: dataset inspection, baseline modeling, experiment logging, artifact management, and deployable service design.
+- 基于 ECG5000 数据集复现了一个轻量级 ECG 时间序列分类流程，将 140 个时间点的单导联 ECG 信号作为 anomaly detection 和 binary classification 的练习场景。
+- 搭建了可复现的本地实验流程，覆盖数据读取、基础数据校验、train/test evaluation、metric logging、artifact 保存和模型版本对比等环节。
+- 围绕 AWS 风格的 MLOps 流程组织项目结构，为后续接入 S3 model artifacts、EC2 deployment、MLflow Tracking 和 FastAPI inference service 做准备。
+- 项目不以模型质量为核心目标，而是更关注端到端工程流程：dataset inspection、baseline modeling、evaluation report、local inference、API serving 和后续 cloud deployment。
 
-## Project Goal
+## 项目目标
 
-This repository is a small reproduction exercise inspired by ECG anomaly detection projects. The main goal is to become familiar with:
+这个仓库是一个小型复现项目，用来练习 ECG anomaly detection 的完整机器学习工程流程。主要目标是熟悉：
 
-- ECG time-series dataset handling
-- Basic anomaly/multi-class classification workflow
-- MLflow tracking, runs, metrics, parameters, and artifacts
-- AWS-oriented project structure, especially S3 artifact storage and deployable model packaging
-- A practical end-to-end machine learning lifecycle
+- ECG time-series dataset 的读取和处理
+- 基础 anomaly detection / binary classification 流程
+- MLflow tracking、runs、metrics、parameters 和 artifacts
+- 面向 AWS 的项目组织方式，尤其是 S3 artifact storage 和可部署的 model serving 结构
+- 从数据到模型、从模型到服务的端到端 machine learning lifecycle
 
-This is not intended to be a production medical model. The dataset is small, the training goal is intentionally modest, and the final model quality is not the main evaluation criterion.
+这个项目不是 production medical model。数据集较小，训练目标也刻意保持简单，最终模型分数不是主要评价标准。
 
-## Dataset Analysis
+## 数据集分析
 
-The dataset folder contains the ECG5000 train/test split in three equivalent formats:
+`dataset/` 目录用于放置 ECG5000 的 train/test split。原始数据包含三种等价格式：
 
 - `ECG5000_TRAIN.txt` / `ECG5000_TEST.txt`
 - `ECG5000_TRAIN.arff` / `ECG5000_TEST.arff`
 - `ECG5000_TRAIN.ts` / `ECG5000_TEST.ts`
 
-The `.txt` files are the simplest format for this project. Each row contains:
+本项目默认使用 `.txt` 文件，因为格式最直接。每一行表示一条 ECG 样本：
 
-- column 1: class label, from `1` to `5`
-- columns 2-141: one ECG time series with `140` numeric time steps
+- 第 1 列：class label，取值为 `1` 到 `5`
+- 第 2-141 列：长度为 `140` 的 ECG time series
 
-The included metadata states that the dataset is univariate, equal-length, has no missing values, and uses five class labels. The local provenance note says: `ECG5000 provenance not determined yet`.
+数据集 metadata 显示它是 univariate、equal-length、无 missing values，并且包含 5 个类别。本地说明文件中写着：`ECG5000 provenance not determined yet`。
 
-Raw dataset files are not committed to this repository. Place the expected ECG5000 files under `dataset/` before running the local pipeline.
+原始数据文件没有提交到 GitHub。运行本地 pipeline 前，需要把 ECG5000 文件放到 `dataset/` 目录下。
 
-### Split Summary
+### 数据规模
 
 | Split | Samples | Features per Sample | Shape |
 | --- | ---: | ---: | --- |
@@ -48,7 +48,7 @@ Raw dataset files are not committed to this repository. Place the expected ECG50
 | Test | 4,500 | 140 | `(4500, 141)` |
 | Total | 5,000 | 140 | `(5000, 141)` |
 
-### Class Distribution
+### 类别分布
 
 | Class | Train | Test | Total | Total % |
 | --- | ---: | ---: | ---: | ---: |
@@ -58,9 +58,9 @@ Raw dataset files are not committed to this repository. Place the expected ECG50
 | 4 | 19 | 175 | 194 | 3.88% |
 | 5 | 2 | 22 | 24 | 0.48% |
 
-The data is highly imbalanced. Classes `1` and `2` dominate the dataset, while classes `3`, `4`, and especially `5` are rare. For a real modeling task, this would require careful handling with class weights, stratified validation, threshold tuning, or anomaly-oriented evaluation. For this mini project, the imbalance is mainly useful because it gives a realistic reason to log per-class metrics and confusion matrices in MLflow.
+数据类别非常不均衡。Class `1` 和 class `2` 占据绝大多数样本，而 class `3`、class `4`，尤其是 class `5` 样本很少。真实建模时需要考虑 class weight、stratified validation、threshold tuning 或 anomaly-oriented evaluation。这个 mini project 里，这种不均衡主要用来练习记录 per-class metrics 和 confusion matrix。
 
-### Value Statistics
+### 数值统计
 
 | Split | Missing Values | Min | Max | Mean | Std |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -68,23 +68,23 @@ The data is highly imbalanced. Classes `1` and `2` dominate the dataset, while c
 | Test | 0 | -7.0904 | 7.4021 | -0.0000 | 0.9964 |
 | Total | 0 | -7.0904 | 7.4021 | -0.0000 | 0.9964 |
 
-The signals appear already normalized, with near-zero mean and near-unit standard deviation. This makes the dataset convenient for fast baseline experiments.
+从统计结果看，信号基本已经接近标准化，整体均值接近 0，标准差接近 1。因此这个数据集很适合快速跑 baseline experiment。
 
-## Suggested Workflow
+## 建议流程
 
-1. Load `ECG5000_TRAIN.txt` and `ECG5000_TEST.txt`.
-2. Split labels and time-series features.
-3. Train a simple baseline model, such as Logistic Regression, 1D-CNN, LSTM, or a small PyTorch MLP.
-4. Log each run with MLflow:
-   - parameters: model type, learning rate, batch size, epochs
-   - metrics: accuracy, precision, recall, F1, per-class F1
-   - artifacts: confusion matrix, classification report, model file
-5. Store model artifacts in an S3-compatible location.
-6. Optionally deploy a small FastAPI inference service that loads the selected model artifact.
+1. 读取 `ECG5000_TRAIN.txt` 和 `ECG5000_TEST.txt`。
+2. 拆分 labels 和 time-series features。
+3. 先训练一个简单 baseline model，例如 Logistic Regression、1D-CNN、LSTM 或小型 PyTorch MLP。
+4. 用 MLflow 记录每次实验：
+   - parameters: model type、learning rate、batch size、epochs
+   - metrics: accuracy、precision、recall、F1、per-class F1
+   - artifacts: confusion matrix、classification report、model file
+5. 将 model artifacts 保存到 S3-compatible location。
+6. 可选：部署一个小型 FastAPI inference service，加载选定的 model artifact 做预测。
 
 ## Data Loading
 
-The first reusable project module is implemented in `src/data.py`. It loads the local ECG5000 `.txt` files, validates the expected 140-point sequence length, checks for missing values, and returns train/test arrays.
+第一个可复用模块是 `src/data.py`。它负责读取本地 ECG5000 `.txt` 文件，校验每条样本是否为 140 个时间点，检查 missing values，并返回 train/test arrays。
 
 ```python
 from src.data import load_ecg5000
@@ -96,7 +96,7 @@ X_test, y_test = dataset.X_test, dataset.y_test
 X_all, y_all = dataset.X_all, dataset.y_all
 ```
 
-For quick verification from the command line:
+命令行快速检查：
 
 ```bash
 python src/data.py
@@ -104,98 +104,98 @@ python src/data.py
 
 ## Baseline Training
 
-`src/train.py` implements a small CPU-friendly baseline for this practice project. By default, it converts the original 5-class labels into a binary anomaly task:
+`src/train.py` 实现了一个适合 CPU 快速运行的 baseline。默认会把原始 5 分类标签转换成 binary anomaly task：
 
-- `0`: normal ECG, original class `1`
-- `1`: abnormal ECG, original classes `2`, `3`, `4`, and `5`
+- `0`: normal ECG，对应原始 class `1`
+- `1`: abnormal ECG，对应原始 class `2`、`3`、`4`、`5`
 
-The model is intentionally simple: `StandardScaler` + `LogisticRegression(class_weight="balanced")`. This keeps training fast on a normal laptop and is enough for practicing the full MLOps flow.
+模型刻意保持简单：`StandardScaler` + `LogisticRegression(class_weight="balanced")`。这样普通 laptop 也可以很快训练完成，同时足够支撑后面的 MLOps 全流程练习。
 
-Run a local training job without MLflow:
+不启用 MLflow 的本地训练：
 
 ```bash
 python src/train.py --no-mlflow
 ```
 
-Run with MLflow logging enabled after installing the MLflow dependency:
+安装 MLflow 后启用 MLflow logging：
 
 ```bash
 python src/train.py
 ```
 
-If MLflow is not installed yet, the script still trains the model and skips MLflow logging with a console message.
+如果当前环境还没有安装 MLflow，脚本仍然会完成模型训练，只是会在控制台提示并跳过 MLflow logging。
 
-Training outputs are written under `artifacts/`:
+训练产物会写入 `artifacts/`：
 
-- `artifacts/models/`: saved model pickle files
-- `artifacts/reports/`: JSON metrics, classification report, and confusion matrix
+- `artifacts/models/`: 保存的 model pickle files
+- `artifacts/reports/`: JSON metrics、classification report 和 confusion matrix
 
-These local artifacts are ignored by git and can be regenerated at any time.
+这些本地 artifacts 已经被 `.gitignore` 忽略，可以随时重新生成。
 
 ## Evaluation
 
-`src/evaluate.py` evaluates a saved model artifact independently from training. By default, it loads the latest `.pkl` file from `artifacts/models/` and evaluates it on the test split.
+`src/evaluate.py` 用来独立评估已经保存的 model artifact。默认会从 `artifacts/models/` 中加载最新的 `.pkl` 文件，并在 test split 上评估。
 
 ```bash
 python src/evaluate.py
 ```
 
-To evaluate a specific model:
+指定某一个模型：
 
 ```bash
 python src/evaluate.py --model-path artifacts/models/<model-file>.pkl
 ```
 
-To evaluate another split:
+评估其他 split：
 
 ```bash
 python src/evaluate.py --split train
 python src/evaluate.py --split all
 ```
 
-Evaluation outputs are written under:
+评估产物会写入：
 
-- `artifacts/reports/`: evaluation metrics, classification report, and confusion matrix values
+- `artifacts/reports/`: evaluation metrics、classification report 和 confusion matrix values
 - `artifacts/figures/`: confusion matrix PNG files
 
 ## Local Inference
 
-`src/inference.py` loads a saved model and predicts one ECG sequence. By default, it loads the latest model artifact and predicts `test[0]`.
+`src/inference.py` 用来加载保存好的模型，并对单条 ECG sequence 做本地预测。默认加载最新 model artifact，并预测 `test[0]`。
 
 ```bash
 python src/inference.py
 ```
 
-To predict another sample from the local dataset:
+预测本地数据集里的其他样本：
 
 ```bash
 python src/inference.py --split test --sample-index 2627
 ```
 
-To use a specific model artifact:
+指定某一个 model artifact：
 
 ```bash
 python src/inference.py --model-path artifacts/models/<model-file>.pkl
 ```
 
-The script prints a JSON response with the predicted label, readable class name, probabilities, model path, and true label when the sample comes from the local dataset.
+脚本会输出 JSON response，包含 predicted label、readable class name、probabilities、model path，以及来自本地数据集时的 true label。
 
 ## FastAPI Serving
 
-`app/main.py` wraps the local inference logic in a small FastAPI service. It loads the latest model artifact from `artifacts/models/` by default. You can override the model path with the `MODEL_PATH` environment variable.
+`app/main.py` 将本地 inference 逻辑包装成一个小型 FastAPI service。默认从 `artifacts/models/` 加载最新 model artifact，也可以通过 `MODEL_PATH` environment variable 指定模型路径。
 
-Start the API locally:
+本地启动 API：
 
 ```bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Useful endpoints:
+主要 endpoints：
 
-- `GET /health`: check service and model loading status
-- `GET /model`: show loaded model metadata
-- `GET /sample?split=test&sample_index=0`: predict one sample from the local dataset
-- `POST /predict`: predict one request body with exactly 140 ECG values
+- `GET /health`: 检查 service 状态和 model loading status
+- `GET /model`: 查看当前加载的 model metadata
+- `GET /sample?split=test&sample_index=0`: 从本地数据集中取一个样本并预测
+- `POST /predict`: 对请求体中的一条 140 维 ECG sequence 做预测
 
 Prediction body shape:
 
@@ -205,33 +205,30 @@ Prediction body shape:
 }
 ```
 
-The real request must include exactly 140 values.
+真实请求必须包含正好 140 个数值。
 
 ## AWS and MLflow Practice Scope
 
-The project can be used to practice the following cloud MLOps components:
+这个项目后续可以继续练习以下 cloud MLOps 组件：
 
-- **MLflow Tracking**: record experiments, parameters, metrics, artifacts, and model versions
-- **S3**: store datasets, trained models, plots, and evaluation reports
-- **EC2**: host a simple training job, MLflow server, or FastAPI inference service
-- **RDS/PostgreSQL**: use as an MLflow backend store if practicing a more realistic setup
-- **Docker**: package the training/inference environment for repeatable execution
-- **CloudWatch**: optionally inspect logs for the deployed service
+- **MLflow Tracking**: 记录 experiments、parameters、metrics、artifacts 和 model versions
+- **S3**: 存储 datasets、trained models、plots 和 evaluation reports
+- **EC2**: 托管 training job、MLflow server 或 FastAPI inference service
+- **RDS/PostgreSQL**: 作为 MLflow backend store，练习更接近真实环境的实验管理
+- **Docker**: 打包 training/inference environment，保证可重复运行
+- **CloudWatch**: 查看 deployed service 的基础 logs
 
-These components are intentionally kept small. The goal is to understand the workflow rather than build a large-scale production platform.
+这些组件会保持小而清晰。这个项目的目标是理解 workflow，而不是搭建大型 production platform。
 
 ## Repository Structure
 
 ```text
 .
 +-- dataset/
-|   +-- ECG5000.txt
+|   +-- README.md
 |   +-- ECG5000_TRAIN.txt
 |   +-- ECG5000_TEST.txt
-|   +-- ECG5000_TRAIN.arff
-|   +-- ECG5000_TEST.arff
-|   +-- ECG5000_TRAIN.ts
-|   +-- ECG5000_TEST.ts
+|   +-- ...
 +-- notebooks/
 |   +-- 01_data_exploration.ipynb
 +-- src/
@@ -246,22 +243,22 @@ These components are intentionally kept small. The goal is to understand the wor
 +-- README.md
 ```
 
-### Planned File Responsibilities
+### 文件职责
 
 | Path | Purpose |
 | --- | --- |
-| `notebooks/01_data_exploration.ipynb` | Explore ECG waveforms, class distribution, and simple baseline ideas. |
-| `src/data.py` | Load ECG5000 files and prepare features/labels. |
-| `src/train.py` | Train baseline models and log experiments with MLflow. |
-| `src/evaluate.py` | Generate metrics, classification reports, and confusion matrices. |
-| `src/inference.py` | Load a saved model artifact and run local predictions. |
-| `app/main.py` | Optional FastAPI inference service for AWS deployment practice. |
-| `requirements.txt` | Python dependencies for local training, MLflow, and optional serving. |
-| `.gitignore` | Ignore local runtime artifacts such as virtual environments and MLflow outputs. |
+| `notebooks/01_data_exploration.ipynb` | 探索 ECG waveform、class distribution 和基础 baseline 思路。 |
+| `src/data.py` | 读取 ECG5000 文件并准备 features/labels。 |
+| `src/train.py` | 训练 baseline model，并可选接入 MLflow logging。 |
+| `src/evaluate.py` | 生成 metrics、classification report 和 confusion matrix。 |
+| `src/inference.py` | 加载保存好的 model artifact 并执行本地单条预测。 |
+| `app/main.py` | FastAPI inference service，用于后续 AWS deployment practice。 |
+| `requirements.txt` | 本地 training、MLflow 和 serving 所需 Python dependencies。 |
+| `.gitignore` | 忽略本地 runtime artifacts，例如 virtual environment、dataset、MLflow outputs 和 model artifacts。 |
 
 ## Notes
 
-- This repository currently focuses on the dataset and MLOps project framing.
-- Reported model metrics should be treated as learning artifacts, not as claims of clinical performance.
-- Because the minority classes are very small, aggregate accuracy alone is not a meaningful metric.
-- The most valuable output of this project is a reproducible MLflow/AWS workflow, not a high-performing ECG classifier.
+- 这个仓库当前聚焦本地 dataset、baseline model 和 MLOps project framing。
+- 模型指标只应被视为学习过程中的 artifacts，不代表任何 clinical performance。
+- 少数类样本非常少，因此只看 accuracy 并不可靠。
+- 这个项目最有价值的产出是可复现的 MLflow/AWS workflow，而不是高性能 ECG classifier。
