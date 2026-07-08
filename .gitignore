@@ -9,6 +9,8 @@ env/
 artifacts/
 mlruns/
 mlartifacts/
+mlflow.db
+deploy_test/
 
 dataset/*
 !dataset/README.md

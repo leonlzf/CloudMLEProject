@@ -245,6 +245,261 @@ curl "http://127.0.0.1:8000/sample?split=test&sample_index=2627"
 
 如果只想使用 `POST /predict`，容器只需要能加载 model artifact；`/sample` endpoint 额外依赖挂载后的 `dataset/`。
 
+## AWS S3 + EC2 Deployment
+
+本项目已经跑通一个最小 AWS deployment 闭环：
+
+```text
+Local training
+-> MLflow tracking
+-> model/report artifacts
+-> S3 artifact storage
+-> EC2 pulls code from GitHub
+-> EC2 downloads model from S3
+-> Dockerized FastAPI serving
+-> public API inference
+```
+
+实际测试使用的区域：
+
+```text
+ca-central-1
+```
+
+### 1. S3 Artifact Storage
+
+本地训练完成后，模型文件位于：
+
+```text
+artifacts/models/ecg5000_binary_logreg_20260708_150506.pkl
+```
+
+训练报告位于：
+
+```text
+artifacts/reports/ecg5000_binary_report_20260708_150506.json
+```
+
+创建 S3 bucket：
+
+```powershell
+aws s3 mb s3://cloudmle-ecg5000-artifacts-lzf-ca --region ca-central-1
+```
+
+上传 model artifact：
+
+```powershell
+aws s3 cp artifacts\models\ecg5000_binary_logreg_20260708_150506.pkl s3://cloudmle-ecg5000-artifacts-lzf-ca/models/ --region ca-central-1
+```
+
+上传 report artifact：
+
+```powershell
+aws s3 cp artifacts\reports\ecg5000_binary_report_20260708_150506.json s3://cloudmle-ecg5000-artifacts-lzf-ca/reports/ --region ca-central-1
+```
+
+确认 S3 中的 artifacts：
+
+```powershell
+aws s3 ls s3://cloudmle-ecg5000-artifacts-lzf-ca/models/ --region ca-central-1
+aws s3 ls s3://cloudmle-ecg5000-artifacts-lzf-ca/reports/ --region ca-central-1
+```
+
+如果使用 AWS SSO profile，每条 `aws` 命令后追加：
+
+```powershell
+--profile <profile-name>
+```
+
+### 2. EC2 Setup
+
+EC2 配置：
+
+```text
+AMI: Amazon Linux 2023
+Instance type: t2.micro
+Storage: 18 GiB gp3
+Region: ca-central-1
+Security group: cloudmle-ecg-api-sg
+```
+
+Security group inbound rules：
+
+```text
+SSH         TCP  22    My IP
+Custom TCP  TCP  8000  My IP
+```
+
+Outbound rule 保持默认即可：
+
+```text
+All traffic -> 0.0.0.0/0
+```
+
+建议给 EC2 绑定 IAM role：
+
+```text
+Role name: cloudmle-ec2-s3-readonly-role
+Permission: AmazonS3ReadOnlyAccess
+Use case: EC2
+```
+
+这样 EC2 可以从 S3 下载模型，而不需要在服务器上保存 AWS access key。
+
+### 3. Install Runtime on EC2
+
+SSH 进入 EC2 后，更新系统并安装依赖：
+
+```bash
+sudo dnf update -y
+sudo dnf install -y git docker awscli
+```
+
+启动 Docker：
+
+```bash
+sudo systemctl enable docker
+sudo systemctl start docker
+```
+
+将 `ec2-user` 加入 Docker group：
+
+```bash
+sudo usermod -aG docker ec2-user
+```
+
+执行后退出并重新 SSH，让 group 权限生效：
+
+```bash
+exit
+```
+
+重新登录后验证：
+
+```bash
+git --version
+docker --version
+aws --version
+docker ps
+```
+
+### 4. Clone Repo and Download Model
+
+在 EC2 上 clone GitHub repo：
+
+```bash
+git clone https://github.com/leonlzf/CloudMLEProject.git
+cd CloudMLEProject
+```
+
+创建模型目录：
+
+```bash
+mkdir -p artifacts/models
+```
+
+确认 EC2 可以读取 S3：
+
+```bash
+aws s3 ls s3://cloudmle-ecg5000-artifacts-lzf-ca/models/ --region ca-central-1
+```
+
+从 S3 下载模型：
+
+```bash
+aws s3 cp s3://cloudmle-ecg5000-artifacts-lzf-ca/models/ecg5000_binary_logreg_20260708_150506.pkl artifacts/models/ --region ca-central-1
+```
+
+确认模型文件存在：
+
+```bash
+ls artifacts/models
+```
+
+### 5. Build and Run FastAPI Container
+
+在 EC2 的项目目录中 build Docker image：
+
+```bash
+docker build -t ecg5000-api .
+```
+
+运行 container，并把模型目录挂载到容器内：
+
+```bash
+docker run -d --name ecg5000-api -p 8000:8000 -v $(pwd)/artifacts:/app/artifacts:ro ecg5000-api
+```
+
+检查 container：
+
+```bash
+docker ps
+docker logs ecg5000-api
+```
+
+在 EC2 内部测试：
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+预期返回：
+
+```json
+{
+  "status": "ok",
+  "model_loaded": true,
+  "model_path": "/app/artifacts/models/ecg5000_binary_logreg_20260708_150506.pkl"
+}
+```
+
+### 6. Test Public API
+
+从本地浏览器或 Postman 访问 EC2 public IP：
+
+```text
+http://<EC2_PUBLIC_IP>:8000/health
+```
+
+测试 inference endpoint：
+
+```text
+POST http://<EC2_PUBLIC_IP>:8000/predict
+```
+
+Request body：
+
+```json
+{
+  "values": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+}
+```
+
+返回 `200 OK` 且包含 `predicted_name`、`probabilities`、`model_path`，即表示 public API inference 成功。
+
+如果 EC2 内部 `curl` 成功，但本地访问失败，优先检查：
+
+- 是否使用 EC2 **Public IPv4 address**
+- Security group 是否开放 `Custom TCP 8000` 给当前 My IP
+- Docker container 是否仍在运行
+
+### 7. Stop and Cleanup
+
+停止并删除 container：
+
+```bash
+docker stop ecg5000-api
+docker rm ecg5000-api
+```
+
+如果只是暂时不用服务，在 AWS Console 中 stop EC2 instance：
+
+```text
+EC2 -> Instances -> Instance state -> Stop instance
+```
+
+不要随手 terminate，除非确定以后不再需要该 instance。
+
 ## AWS and MLflow Practice Scope
 
 这个项目后续可以继续练习以下 cloud MLOps 组件：
