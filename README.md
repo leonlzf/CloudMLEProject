@@ -190,6 +190,19 @@ python src/inference.py --model-path artifacts/models/<model-file>.pkl
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+关闭本地 API：
+
+```bash
+Ctrl+C
+```
+
+如果服务是用后台进程启动的，可以先找到 PID，再关闭：
+
+```powershell
+Get-Process | Where-Object { $_.ProcessName -like "*python*" }
+Stop-Process -Id <PID>
+```
+
 主要 endpoints：
 
 - `GET /health`: 检查 service 状态和 model loading status
