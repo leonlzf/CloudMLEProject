@@ -207,6 +207,31 @@ Prediction body shape:
 
 真实请求必须包含正好 140 个数值。
 
+## Docker Serving
+
+项目提供了一个轻量 `Dockerfile`，用于把 FastAPI service 打包成可部署的 container image。镜像只包含代码和 Python dependencies，不内置本地 `dataset/` 或 `artifacts/`。
+
+Build image:
+
+```bash
+docker build -t ecg5000-api .
+```
+
+本地运行 API，并挂载已有的模型和数据目录：
+
+```bash
+docker run --rm -p 8000:8000 -v ${PWD}/artifacts:/app/artifacts:ro -v ${PWD}/dataset:/app/dataset:ro ecg5000-api
+```
+
+启动后可以访问：
+
+```bash
+curl http://127.0.0.1:8000/health
+curl "http://127.0.0.1:8000/sample?split=test&sample_index=2627"
+```
+
+如果只想使用 `POST /predict`，容器只需要能加载 model artifact；`/sample` endpoint 额外依赖挂载后的 `dataset/`。
+
 ## AWS and MLflow Practice Scope
 
 这个项目后续可以继续练习以下 cloud MLOps 组件：
@@ -238,6 +263,8 @@ Prediction body shape:
 |   +-- inference.py
 +-- app/
 |   +-- main.py
++-- Dockerfile
++-- .dockerignore
 +-- requirements.txt
 +-- .gitignore
 +-- README.md
@@ -253,6 +280,8 @@ Prediction body shape:
 | `src/evaluate.py` | 生成 metrics、classification report 和 confusion matrix。 |
 | `src/inference.py` | 加载保存好的 model artifact 并执行本地单条预测。 |
 | `app/main.py` | FastAPI inference service，用于后续 AWS deployment practice。 |
+| `Dockerfile` | 构建 FastAPI service 的 container image。 |
+| `.dockerignore` | 控制 Docker build context，排除 dataset、artifacts 和本地缓存。 |
 | `requirements.txt` | 本地 training、MLflow 和 serving 所需 Python dependencies。 |
 | `.gitignore` | 忽略本地 runtime artifacts，例如 virtual environment、dataset、MLflow outputs 和 model artifacts。 |
 
