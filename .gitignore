@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+.venv/
+venv/
+env/
+
+artifacts/
+mlruns/
+mlartifacts/
+
+dataset/*
+!dataset/README.md
