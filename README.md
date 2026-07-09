@@ -25,50 +25,19 @@
 
 ## 数据集分析
 
-`dataset/` 目录用于放置 ECG5000 的 train/test split。原始数据包含三种等价格式：
-
-- `ECG5000_TRAIN.txt` / `ECG5000_TEST.txt`
-- `ECG5000_TRAIN.arff` / `ECG5000_TEST.arff`
-- `ECG5000_TRAIN.ts` / `ECG5000_TEST.ts`
-
-本项目默认使用 `.txt` 文件，因为格式最直接。每一行表示一条 ECG 样本：
-
-- 第 1 列：class label，取值为 `1` 到 `5`
-- 第 2-141 列：长度为 `140` 的 ECG time series
-
-数据集 metadata 显示它是 univariate、equal-length、无 missing values，并且包含 5 个类别。本地说明文件中写着：`ECG5000 provenance not determined yet`。
+本项目使用 ECG5000 数据集，默认读取 `dataset/ECG5000_TRAIN.txt` 和 `dataset/ECG5000_TEST.txt`。`.txt` 文件每行是一条 ECG 样本：第 1 列是 class label，后 140 列是 ECG time series。
 
 原始数据文件没有提交到 GitHub。运行本地 pipeline 前，需要把 ECG5000 文件放到 `dataset/` 目录下。
 
-### 数据规模
+| Split | Samples | Series Length | Classes | Missing Values |
+| --- | ---: | ---: | --- | ---: |
+| Train | 500 | 140 | `1-5` | 0 |
+| Test | 4,500 | 140 | `1-5` | 0 |
+| Total | 5,000 | 140 | `1-5` | 0 |
 
-| Split | Samples | Features per Sample | Shape |
-| --- | ---: | ---: | --- |
-| Train | 500 | 140 | `(500, 141)` |
-| Test | 4,500 | 140 | `(4500, 141)` |
-| Total | 5,000 | 140 | `(5000, 141)` |
+类别分布明显不均衡：class `1` 和 class `2` 占绝大多数，class `3-5` 样本较少。因此项目评估时更关注 `precision`、`recall`、`F1`、`macro F1` 和 `confusion matrix`，而不是只看 accuracy。
 
-### 类别分布
-
-| Class | Train | Test | Total | Total % |
-| --- | ---: | ---: | ---: | ---: |
-| 1 | 292 | 2,627 | 2,919 | 58.38% |
-| 2 | 177 | 1,590 | 1,767 | 35.34% |
-| 3 | 10 | 86 | 96 | 1.92% |
-| 4 | 19 | 175 | 194 | 3.88% |
-| 5 | 2 | 22 | 24 | 0.48% |
-
-数据类别非常不均衡。Class `1` 和 class `2` 占据绝大多数样本，而 class `3`、class `4`，尤其是 class `5` 样本很少。真实建模时需要考虑 class weight、stratified validation、threshold tuning 或 anomaly-oriented evaluation。这个 mini project 里，这种不均衡主要用来练习记录 per-class metrics 和 confusion matrix。
-
-### 数值统计
-
-| Split | Missing Values | Min | Max | Mean | Std |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Train | 0 | -5.7976 | 4.0581 | 0.0000 | 0.9964 |
-| Test | 0 | -7.0904 | 7.4021 | -0.0000 | 0.9964 |
-| Total | 0 | -7.0904 | 7.4021 | -0.0000 | 0.9964 |
-
-从统计结果看，信号基本已经接近标准化，整体均值接近 0，标准差接近 1。因此这个数据集很适合快速跑 baseline experiment。
+数据整体已经接近标准化，均值接近 0，标准差接近 1，适合快速跑 CPU-friendly baseline experiment。
 
 ## 建议流程
 
@@ -222,7 +191,7 @@ Prediction body shape:
 
 ## Docker Serving
 
-项目提供了一个轻量 `Dockerfile`，用于把 FastAPI service 打包成可部署的 container image。镜像只包含代码和 Python dependencies，不内置本地 `dataset/` 或 `artifacts/`。
+Docker 在这个项目中的作用是把 FastAPI inference service 和 Python dependencies 封装成一个可复现的 container image，避免 EC2 上的 Python 环境、依赖版本和本地环境不一致。模型文件不打进 image，而是在 EC2 从 S3 下载后通过 volume 挂载到 `/app/artifacts`，方便替换模型版本。
 
 Build image:
 
@@ -244,6 +213,25 @@ curl "http://127.0.0.1:8000/sample?split=test&sample_index=2627"
 ```
 
 如果只想使用 `POST /predict`，容器只需要能加载 model artifact；`/sample` endpoint 额外依赖挂载后的 `dataset/`。
+
+### Without Docker
+
+如果只想快速验证，也可以不使用 Docker，直接在 EC2 上运行 FastAPI：
+
+```bash
+sudo dnf install -y git python3-pip awscli
+git clone https://github.com/leonlzf/CloudMLEProject.git
+cd CloudMLEProject
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+mkdir -p artifacts/models
+aws s3 cp s3://cloudmle-ecg5000-artifacts-lzf-ca/models/ecg5000_binary_logreg_20260708_150506.pkl artifacts/models/ --region ca-central-1
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+这个方式更简单，但依赖 EC2 本机 Python 环境；Docker 方式更适合可重复部署和后续迁移到 ECS/ECR 等服务。
 
 ## AWS S3 + EC2 Deployment
 
@@ -566,43 +554,20 @@ bash scripts/deploy_ec2.sh
 
 ## Repository Structure
 
-```text
-.
-+-- dataset/
-|   +-- README.md
-|   +-- ECG5000_TRAIN.txt
-|   +-- ECG5000_TEST.txt
-|   +-- ...
-+-- notebooks/
-|   +-- 01_data_exploration.ipynb
-+-- src/
-|   +-- data.py
-|   +-- train.py
-|   +-- evaluate.py
-|   +-- inference.py
-+-- app/
-|   +-- main.py
-+-- Dockerfile
-+-- .dockerignore
-+-- requirements.txt
-+-- .gitignore
-+-- README.md
-```
-
-### 文件职责
-
 | Path | Purpose |
 | --- | --- |
+| `dataset/README.md` | 说明 ECG5000 原始数据应放置的位置；真实数据文件不提交到 GitHub。 |
 | `notebooks/01_data_exploration.ipynb` | 探索 ECG waveform、class distribution 和基础 baseline 思路。 |
 | `src/data.py` | 读取 ECG5000 文件并准备 features/labels。 |
-| `src/train.py` | 训练 baseline model，并可选接入 MLflow logging。 |
+| `src/train.py` | 训练 CPU-friendly baseline model，并可选接入 MLflow logging。 |
 | `src/evaluate.py` | 生成 metrics、classification report 和 confusion matrix。 |
 | `src/inference.py` | 加载保存好的 model artifact 并执行本地单条预测。 |
-| `app/main.py` | FastAPI inference service，用于后续 AWS deployment practice。 |
+| `app/main.py` | FastAPI inference service，用于本地和 EC2 deployment。 |
+| `scripts/deploy_ec2.sh` | 在 EC2 上自动安装依赖、下载 S3 模型、build image 并重启 container。 |
 | `Dockerfile` | 构建 FastAPI service 的 container image。 |
 | `.dockerignore` | 控制 Docker build context，排除 dataset、artifacts 和本地缓存。 |
 | `requirements.txt` | 本地 training、MLflow 和 serving 所需 Python dependencies。 |
-| `.gitignore` | 忽略本地 runtime artifacts，例如 virtual environment、dataset、MLflow outputs 和 model artifacts。 |
+| `.gitignore` | 忽略 runtime artifacts，例如 dataset、model artifacts、MLflow outputs 和临时目录。 |
 
 ## Notes
 
