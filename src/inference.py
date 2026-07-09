@@ -19,6 +19,7 @@ DEFAULT_MODEL_DIR = PROJECT_ROOT / "artifacts" / "models"
 EXPECTED_SERIES_LENGTH = 140
 
 
+# 解析命令行参数，支持指定模型路径、数据 split、样本 index 或外部 JSON 输入。
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run local inference with a saved ECG5000 model."
@@ -56,6 +57,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# 在模型目录中查找最近修改的 .pkl 文件，作为默认推理模型。
 def find_latest_model(model_dir: Path) -> Path:
     candidates = sorted(
         model_dir.glob("*.pkl"),
@@ -69,6 +71,7 @@ def find_latest_model(model_dir: Path) -> Path:
     return candidates[0]
 
 
+# 从 pickle artifact 中加载 sklearn pipeline 和训练时保存的 metadata。
 def load_model_artifact(model_path: Path) -> tuple[Pipeline, dict[str, Any]]:
     with model_path.open("rb") as f:
         payload = pickle.load(f)
@@ -79,6 +82,7 @@ def load_model_artifact(model_path: Path) -> tuple[Pipeline, dict[str, Any]]:
     return payload, {}
 
 
+# 从 JSON 文件中读取一条 140 维 ECG 序列，并校验输入长度。
 def load_sequence_from_json(path: Path) -> np.ndarray:
     payload = json.loads(path.read_text(encoding="utf-8"))
 
@@ -96,6 +100,7 @@ def load_sequence_from_json(path: Path) -> np.ndarray:
     return sequence
 
 
+# 从本地 ECG5000 train/test split 中取出一条样本及其原始标签。
 def load_sequence_from_dataset(split: str, sample_index: int) -> tuple[np.ndarray, int]:
     dataset = load_ecg5000()
     if split == "train":
@@ -111,12 +116,14 @@ def load_sequence_from_dataset(split: str, sample_index: int) -> tuple[np.ndarra
     return X[sample_index], int(y[sample_index])
 
 
+# 将模型输出的数字标签转换成更易读的类别名称。
 def label_name(label: int, task: str) -> str:
     if task == "binary":
         return "abnormal" if label == 1 else "normal"
     return str(label)
 
 
+# 对单条 ECG 序列执行推理，并返回预测标签、类别名称和概率。
 def predict_one(
     model: Pipeline,
     sequence: np.ndarray,
@@ -142,6 +149,7 @@ def predict_one(
     return result
 
 
+# 命令行入口：加载模型、读取输入样本、执行预测并打印 JSON 结果。
 def main() -> None:
     args = parse_args()
 
