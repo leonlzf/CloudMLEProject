@@ -500,6 +500,57 @@ EC2 -> Instances -> Instance state -> Stop instance
 
 不要随手 terminate，除非确定以后不再需要该 instance。
 
+### 8. Automated EC2 Deployment Script
+
+项目中提供了一个简单的 EC2 deployment script：
+
+```text
+scripts/deploy_ec2.sh
+```
+
+这个脚本用于在 Amazon Linux 2023 EC2 上自动复现上面的部署流程。它会执行：
+
+- 安装 `git`、`docker`、`awscli`
+- 启动 Docker service
+- clone 或 pull GitHub repo
+- 从 S3 下载指定 model artifact
+- build `ecg5000-api` Docker image
+- 停止并删除旧的 `ecg5000-api` container
+- 启动新的 FastAPI container
+- 调用 `http://127.0.0.1:8000/health` 做健康检查
+
+脚本默认配置：
+
+```bash
+REGION="ca-central-1"
+BUCKET="cloudmle-ecg5000-artifacts-lzf-ca"
+MODEL_FILE="ecg5000_binary_logreg_20260708_150506.pkl"
+REPO_URL="https://github.com/leonlzf/CloudMLEProject.git"
+```
+
+在 EC2 上运行：
+
+```bash
+cd ~/CloudMLEProject
+git pull
+bash scripts/deploy_ec2.sh
+```
+
+如果 EC2 上还没有 clone repo，可以先执行：
+
+```bash
+git clone https://github.com/leonlzf/CloudMLEProject.git
+cd CloudMLEProject
+bash scripts/deploy_ec2.sh
+```
+
+运行前需要确认：
+
+- EC2 使用 Amazon Linux 2023
+- EC2 已绑定可以读取 S3 的 IAM role
+- S3 中存在脚本配置的 `MODEL_FILE`
+- Security group 已开放 `8000` 给当前 My IP
+
 ## AWS and MLflow Practice Scope
 
 这个项目后续可以继续练习以下 cloud MLOps 组件：
