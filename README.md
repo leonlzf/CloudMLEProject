@@ -575,3 +575,20 @@ bash scripts/deploy_ec2.sh
 - 模型指标只应被视为学习过程中的 artifacts，不代表任何 clinical performance。
 - 少数类样本非常少，因此只看 accuracy 并不可靠。
 - 这个项目最有价值的产出是可复现的 MLflow/AWS workflow，而不是高性能 ECG classifier。
+
+## Next AWS Learning Roadmap
+
+这个项目已经跑通了 `S3 + EC2 + Dockerized FastAPI` 的最小闭环。后续如果继续深入 AWS，建议按下面顺序练：
+
+| Priority | AWS Topic | Why It Matters for This Project |
+| --- | --- | --- |
+| 1 | **CloudWatch Logs** | 把 EC2 / Docker / FastAPI 日志集中到 AWS Console，避免只能 SSH 后用 `docker logs` 查看。 |
+| 2 | **IAM Custom Policy** | 将当前较宽的 S3 read-only 权限收窄到指定 bucket/prefix，例如只允许读取 `models/*`。 |
+| 3 | **EC2 User Data / Deployment Automation** | 将 `scripts/deploy_ec2.sh` 放入 instance bootstrap 流程，让新 EC2 能自动安装依赖、下载模型并启动服务。 |
+| 4 | **ECR** | 将 Docker image 推送到 AWS container registry，让 EC2/ECS 直接 pull image，而不是每次在 EC2 上 build。 |
+| 5 | **ECS Fargate** | 用托管 container service 替代手动维护 EC2，更接近生产级 container deployment。 |
+| 6 | **SSM Parameter Store** | 保存 `MODEL_S3_URI`、bucket、region 等配置，避免把部署配置写死在脚本里。 |
+| 7 | **MLflow Remote Tracking** | 将 MLflow tracking server 部署到 EC2，并使用 S3 作为 artifact store。 |
+| 8 | **RDS PostgreSQL** | 作为 MLflow backend store，练习更完整的 experiment tracking 架构。 |
+
+最推荐的下一步是 **CloudWatch Logs**，因为它可以直接增强当前已经跑通的 EC2 部署，不需要大改现有架构。
